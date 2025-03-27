@@ -1,5 +1,16 @@
 //! Process management syscalls
-use crate::task::{change_program_brk, exit_current_and_run_next, suspend_current_and_run_next};
+use core::mem::size_of;
+
+use alloc::slice;
+
+use crate::{
+    mm::{translated_byte_buffer, PageTable, VirtAddr},
+    task::{
+        change_program_brk, current_user_token, exit_current_and_run_next, get_syscall,
+        suspend_current_and_run_next,
+    },
+    timer::get_time_us,
+};
 
 #[repr(C)]
 #[derive(Debug)]
@@ -22,19 +33,71 @@ pub fn sys_yield() -> isize {
     0
 }
 
+/// copy memory to user spcae
+fn copy_to_user(kernel_start: usize, user_start: *const u8, _len: usize) {
+    let mut copied_len = 0;
+    let token = current_user_token();
+    let slices = translated_byte_buffer(token, user_start, _len);
+    for slice in slices {
+        slice.clone_from_slice(unsafe {
+            slice::from_raw_parts((kernel_start + copied_len) as *const u8, slice.len())
+        });
+        copied_len += slice.len();
+    }
+}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?
 pub fn sys_get_time(_ts: *mut TimeVal, _tz: usize) -> isize {
     trace!("kernel: sys_get_time");
-    -1
+    let us = get_time_us();
+    let ts = TimeVal {
+        sec: us / 1_000_000,
+        usec: us % 1_000_000,
+    };
+    copy_to_user(
+        &ts as *const TimeVal as usize,
+        _ts as *const u8,
+        size_of::<TimeVal>(),
+    );
+    0
 }
 
 /// TODO: Finish sys_trace to pass testcases
 /// HINT: You might reimplement it with virtual memory management.
 pub fn sys_trace(_trace_request: usize, _id: usize, _data: usize) -> isize {
     trace!("kernel: sys_trace");
-    -1
+    let token = current_user_token();
+    match _trace_request {
+        // read
+        0 => {
+            let page_table = PageTable::from_token(token);
+            let va = VirtAddr::from(_id);
+            let vpn = va.floor();
+            match page_table.translate(vpn) {
+                None => -1,
+                Some(pte) => pte.ppn().get_bytes_array()[va.page_offset()].into(),
+            }
+        }
+        // write
+        1 => {
+            let page_table = PageTable::from_token(token);
+            let va = VirtAddr::from(_id);
+            let vpn = va.floor();
+            match page_table.translate(vpn) {
+                None => -1,
+                Some(pte) => {
+                    pte.ppn().get_bytes_array()[va.page_offset()] = _data as u8;
+                    0
+                }
+            }
+        }
+        // syscall
+        2 => get_syscall(_id) as isize,
+        // default
+        _ => -1,
+    }
 }
 
 // YOUR JOB: Implement mmap.

@@ -103,6 +103,20 @@ impl TaskManager {
         inner.tasks[cur].task_status = TaskStatus::Exited;
     }
 
+    /// Record syscall
+    fn record_syscall(&self, syscall_id: usize) {
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_record[syscall_id] += 1;
+    }
+
+    /// Get syscall record
+    fn get_syscall(&self, syscall_id: usize) -> usize {
+        let inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        inner.tasks[current].syscall_record[syscall_id]
+    }
+
     /// Find next task to run and return task id.
     ///
     /// In this case, we only return the first `Ready` task in task list.
@@ -201,4 +215,14 @@ pub fn current_trap_cx() -> &'static mut TrapContext {
 /// Change the current 'Running' task's program break
 pub fn change_program_brk(size: i32) -> Option<usize> {
     TASK_MANAGER.change_current_program_brk(size)
+}
+
+/// Record syscall
+pub fn record_syscall(syscall_id: usize) {
+    TASK_MANAGER.record_syscall(syscall_id);
+}
+
+/// Get syscall record
+pub fn get_syscall(syscall_id: usize) -> usize {
+    TASK_MANAGER.get_syscall(syscall_id)
 }
