@@ -1,15 +1,17 @@
 //! Process management syscalls
 //!
-use alloc::sync::Arc;
-use core::{mem::size_of, slice};
 use crate::{
     fs::{open_file, OpenFlags},
-    mm::{translated_byte_buffer,translated_refmut, translated_str},
+    mm::{translated_refmut, translated_str},
+    syscall::copy_to_user,
     task::{
         add_task, current_task, current_user_token, exit_current_and_run_next,
-        suspend_current_and_run_next,BIG_STRIDE
-    },timer::get_time_us,
+        suspend_current_and_run_next, BIG_STRIDE,
+    },
+    timer::get_time_us,
 };
+use alloc::sync::Arc;
+use core::mem::size_of;
 
 #[repr(C)]
 #[derive(Debug)]
@@ -101,18 +103,7 @@ pub fn sys_waitpid(pid: isize, exit_code_ptr: *mut i32) -> isize {
     }
     // ---- release current PCB automatically
 }
-/// copy memory to user spcae
-fn copy_to_user(kernel_start: usize, user_start: *const u8, _len: usize) {
-    let mut copied_len = 0;
-    let token = current_user_token();
-    let slices = translated_byte_buffer(token, user_start, _len);
-    for slice in slices {
-        slice.clone_from_slice(unsafe {
-            slice::from_raw_parts((kernel_start + copied_len) as *const u8, slice.len())
-        });
-        copied_len += slice.len();
-    }
-}
+
 /// YOUR JOB: get time with second and microsecond
 /// HINT: You might reimplement it with virtual memory management.
 /// HINT: What if [`TimeVal`] is splitted by two pages ?

@@ -7,6 +7,7 @@ use crate::mm::{MapPermission, MemorySet, PhysPageNum, VirtAddr, VirtPageNum, KE
 use crate::sync::UPSafeCell;
 use crate::timer::get_time_ms;
 use crate::trap::{trap_handler, TrapContext};
+use alloc::string::String;
 use alloc::sync::{Arc, Weak};
 use alloc::vec;
 use alloc::vec::Vec;
@@ -73,6 +74,7 @@ pub struct TaskControlBlockInner {
     /// It is set when active exit or execution error occurs
     pub exit_code: i32,
     pub fd_table: Vec<Option<Arc<dyn File + Send + Sync>>>,
+    pub fd_name:Vec<Option<String>>,
 
     /// Heap bottom
     pub heap_bottom: usize,
@@ -150,6 +152,7 @@ impl TaskControlBlock {
                         // 2 -> stderr
                         Some(Arc::new(Stdout)),
                     ],
+                    fd_name:Vec::new(),
                     heap_bottom: user_sp,
                     program_brk: user_sp,
                     start_time: get_time_ms(),
@@ -234,6 +237,7 @@ impl TaskControlBlock {
                     children: Vec::new(),
                     exit_code: 0,
                     fd_table: new_fd_table,
+                    fd_name:parent_inner.fd_name.clone(),
                     heap_bottom: parent_inner.heap_bottom,
                     program_brk: parent_inner.program_brk,start_time: get_time_ms(),
                     pass: BIG_STRIDE / 16,
