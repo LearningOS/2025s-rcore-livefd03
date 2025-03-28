@@ -15,6 +15,7 @@ mod switch;
 mod task;
 
 use crate::loader::{get_app_data, get_num_app};
+use crate::mm::{MapPermission, VirtAddr, VirtPageNum};
 use crate::sync::UPSafeCell;
 use crate::trap::TrapContext;
 use alloc::vec::Vec;
@@ -134,6 +135,46 @@ impl TaskManager {
         inner.tasks[inner.current_task].get_user_token()
     }
 
+    /// Map an area for current 'Running' task
+    pub fn map(&self, start: usize, len: usize, port: usize) -> bool {
+        let left_vaddr = VirtAddr::from(start);
+        let right_vaddr = VirtAddr::from(start + len);
+        if !left_vaddr.aligned() {
+            return false;
+        }
+        if port & !0x7 != 0 || port == 0 {
+            return false;
+        }
+
+        let left = VirtPageNum::from(left_vaddr);
+        let right = right_vaddr.ceil();
+        let permission = MapPermission::from_bits_truncate(((port as u8) << 1) | (1 << 4));
+
+        // get current task memset
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let memset = &mut inner.tasks[current].memory_set;
+
+        memset.map(left, right, permission)
+    }
+
+    /// Unmap an area for current 'Running' task
+    pub fn unmap(&self, start: usize, len: usize) -> bool {
+        let left_vaddr = VirtAddr::from(start);
+        let right_vaddr = VirtAddr::from(start + len);
+        if !left_vaddr.aligned() {
+            return false;
+        }
+        let left = VirtPageNum::from(left_vaddr);
+        let right = right_vaddr.ceil();
+        // get current task memset
+        let mut inner = self.inner.exclusive_access();
+        let current = inner.current_task;
+        let memset = &mut inner.tasks[current].memory_set;
+
+        memset.unmap(left, right)
+    }
+
     /// Get the current 'Running' task's trap contexts.
     fn get_current_trap_cx(&self) -> &'static mut TrapContext {
         let inner = self.inner.exclusive_access();
@@ -205,6 +246,16 @@ pub fn exit_current_and_run_next() {
 /// Get the current 'Running' task's token.
 pub fn current_user_token() -> usize {
     TASK_MANAGER.get_current_token()
+}
+
+/// Map an area for current 'Running' task
+pub fn current_map(start: usize, len: usize, port: usize) -> bool {
+    TASK_MANAGER.map(start, len, port)
+}
+
+/// Unmap an area for current 'Running' task
+pub fn current_munmap(start: usize, len: usize) -> bool {
+    TASK_MANAGER.unmap(start, len)
 }
 
 /// Get the current 'Running' task's trap contexts.
