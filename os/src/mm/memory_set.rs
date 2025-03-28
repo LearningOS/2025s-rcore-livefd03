@@ -300,6 +300,38 @@ impl MemorySet {
             false
         }
     }
+    /// map
+    pub fn map(
+        &mut self,
+        left: VirtPageNum,
+        right: VirtPageNum,
+        permission: MapPermission,
+    ) -> bool {
+        for map_area in self.areas.iter() {
+            if map_area.vpn_range.get_start() >= right || left >= map_area.vpn_range.get_end() {
+                continue;
+            }
+            return false;
+        }
+        self.insert_framed_area(left.into(), right.into(), permission);
+        true
+    }
+    /// unmap
+    pub fn unmap(&mut self, left: VirtPageNum, right: VirtPageNum) -> bool {
+        let mut area_index = None;
+        for (index, map_area) in self.areas.iter_mut().enumerate() {
+            if map_area.vpn_range.get_start() == left && right == map_area.vpn_range.get_end() {
+                map_area.unmap(&mut self.page_table);
+                area_index = Some(index);
+            }
+        }
+        if let Some(index) = area_index {
+            self.areas.remove(index);
+            true
+        } else {
+            false
+        }
+    }
 }
 /// map area structure, controls a contiguous piece of virtual memory
 pub struct MapArea {
